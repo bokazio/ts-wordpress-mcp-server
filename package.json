@@ -1,0 +1,31 @@
+{
+  "name": "ts-wordpress-mcp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "serve": "node dist/server.js",
+    "start": "NODE_OPTIONS=\"--loader ts-node/esm\" node src/server.ts",
+    "dev": "ts-node-dev --respawn src/server.ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["wordpress", "mcp", "typescript"],
+  "author": "Jan Krüger",
+  "license": "EUPL-1.2",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "axios": "^1.8.4",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.14.1",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.3"
+  }
+}
