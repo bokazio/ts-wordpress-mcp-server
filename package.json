@@ -4,13 +4,17 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --outDir dist",
     "serve": "node dist/server.js",
-    "start": "NODE_OPTIONS=\"--loader ts-node/esm\" node src/server.ts",
-    "dev": "ts-node-dev --respawn src/server.ts",
-    "clean": "rm -rf dist"
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "start": "npm run clean && npm run build && npm run serve"
   },
-  "keywords": ["wordpress", "mcp", "typescript"],
+  "keywords": [
+    "wordpress",
+    "mcp",
+    "typescript"
+  ],
   "author": "Jan Krüger",
   "license": "EUPL-1.2",
   "type": "module",
@@ -25,7 +29,6 @@
     "@types/express": "^5.0.1",
     "@types/node": "^22.14.1",
     "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.3"
   }
 }
