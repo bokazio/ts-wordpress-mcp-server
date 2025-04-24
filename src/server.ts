@@ -125,22 +125,24 @@ function createMcpServer(): McpServer {
     return server;
 }
 
-// Detect if running in VS Code MCP mode
-const isVSCodeMode = true; // Always use stdio transport when running in VS Code
+// --- Server Start ---
 
-// If in VS Code Mode, use StdioServerTransport
-if (isVSCodeMode) {
+// Determine transport mode based on environment variable
+const useStdio = process.env.MCP_TRANSPORT?.toLowerCase() === 'stdio';
+
+// If MCP_TRANSPORT is 'stdio', use StdioServerTransport
+if (useStdio) {
     const server = createMcpServer();
     const stdioTransport = new StdioServerTransport();
-    
-    // Connect the server to stdio for VS Code MCP Extension
+
+    // Connect the server to stdio
     server.connect(stdioTransport).catch(error => {
         console.error('Failed to connect MCP server to stdio transport:', error);
         process.exit(1);
     });
-    
+
     // Use stderr for logging to avoid interfering with protocol messages on stdout
-    console.error('WordPress MCP Server started in VS Code mode');
+    console.error('WordPress MCP Server started in stdio mode (MCP_TRANSPORT=stdio)');
     console.error(`Using WordPress API URL: ${WORDPRESS_API_URL}`);
     if (WORDPRESS_AUTH_USER) {
         console.error(`Using Basic Authentication for user: ${WORDPRESS_AUTH_USER}`);
@@ -148,7 +150,8 @@ if (isVSCodeMode) {
         console.error('WordPress authentication not configured. API requests might fail if authentication is required.');
     }
 } else {
-    // --- Express App Setup for HTTP mode ---
+    // --- Express App Setup for HTTP mode (default) ---
+    console.log('Starting WordPress MCP Server in HTTP mode (default)...');
     const app = express();
     app.use(express.json());
 
