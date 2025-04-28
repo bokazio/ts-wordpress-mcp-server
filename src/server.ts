@@ -5,11 +5,13 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import axios from 'axios';
 import { randomUUID } from 'node:crypto';
+import { InMemoryEventStore } from '@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js';
 
 // --- Configuration ---
 // Replace with your WordPress site URL and potentially authentication details
@@ -30,10 +32,17 @@ const axiosInstance = axios.create({
     }
 });
 
+// MCP Protocol Versions
+const MCP_PROTOCOL_VERSION_CURRENT = '2025-03-26'; // Current version (Streamable HTTP)
+const MCP_PROTOCOL_VERSION_LEGACY = '2024-11-05';  // Legacy version (HTTP+SSE)
+
 // --- MCP Server Setup ---
 
-// Map to store transports by session ID for stateful connections
-const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
+// Store transports for each session type
+const transports = {
+    streamable: {} as Record<string, StreamableHTTPServerTransport>,
+    sse: {} as Record<string, SSEServerTransport>
+};
 
 function createMcpServer(): McpServer {
     const server = new McpServer({
@@ -139,6 +148,9 @@ function createMcpServer(): McpServer {
                 // Decode the base64 content
                 const buffer = Buffer.from(file_content, 'base64');
                 
+                // Log the file size for debugging
+                console.log(`Uploading file: ${file_name}, size: ${buffer.length / 1024} KB`);
+                
                 // Determine content type based on file extension
                 const fileExtension = file_name.split('.').pop()?.toLowerCase() || '';
                 const contentTypeMap: { [key: string]: string } = {
@@ -155,18 +167,23 @@ function createMcpServer(): McpServer {
                 
                 const contentType = contentTypeMap[fileExtension] || 'application/octet-stream';
                 
-                // Create a custom instance for this request with different headers
+                // Create a custom instance for this request with different headers and timeout
                 const mediaUploadHeaders = {
                     ...authHeader,
                     'Content-Type': contentType,
                     'Content-Disposition': `attachment; filename="${file_name}"`,
                 };
                 
-                // Upload the media file
+                // Configure axios for file upload with increased timeout and max size
                 const uploadResponse = await axios.post(
                     `${WORDPRESS_API_URL}/media`,
                     buffer,
-                    { headers: mediaUploadHeaders }
+                    { 
+                        headers: mediaUploadHeaders,
+                        timeout: 60000, // 60 second timeout for large uploads
+                        maxContentLength: Infinity,
+                        maxBodyLength: Infinity
+                    }
                 );
                 
                 const mediaId = uploadResponse.data.id;
@@ -191,7 +208,22 @@ function createMcpServer(): McpServer {
                     ],
                 };
             } catch (error: any) {
-                console.error('Error uploading media to WordPress:', error.response?.data || error.message);
+                // Provide more detailed error information
+                console.error('Error uploading media to WordPress:');
+                
+                if (error.response) {
+                    // The request was made and the server responded with a status code
+                    console.error(`Status: ${error.response.status}`);
+                    console.error('Response data:', error.response.data);
+                    console.error('Response headers:', error.response.headers);
+                } else if (error.request) {
+                    // The request was made but no response was received
+                    console.error('No response received:', error.request);
+                } else {
+                    // Something happened in setting up the request
+                    console.error('Error message:', error.message);
+                }
+                
                 throw new Error(`Failed to upload media: ${error.response?.data?.message || error.message}`);
             }
         }
@@ -225,68 +257,122 @@ if (useStdio) {
         console.error('WordPress authentication not configured. API requests might fail if authentication is required.');
     }
 } else {
-    // --- Express App Setup for HTTP mode (default) ---
-    console.log('Starting WordPress MCP Server in HTTP mode (default)...');
+    // --- Express App Setup ---
+    console.log('Starting WordPress MCP Server...');
     const app = express();
-    app.use(express.json());
+    
+    // Configure Express to handle larger payloads
+    app.use(express.json({ limit: '50mb' }));
+    app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-    // Handle MCP POST requests
-    app.post('/mcp', async (req: Request, res: Response) => {
+    //=============================================================================
+    // MODERN STREAMABLE HTTP TRANSPORT (PROTOCOL VERSION 2025-03-26)
+    //=============================================================================
+
+    // Handle all MCP requests (POST, GET, DELETE)
+    app.all('/mcp', async (req: Request, res: Response) => {
+        console.log(`Received ${req.method} request to /mcp`);
+        
+        // Add MCP protocol version to response headers
+        res.setHeader('MCP-Protocol-Version', MCP_PROTOCOL_VERSION_CURRENT);
+        
+        // Get session ID from header
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
-        let transport: StreamableHTTPServerTransport;
-
+        
         try {
-            if (sessionId && transports[sessionId]) {
+            // Log incoming request for debugging
+            if (req.method === 'POST') {
+                console.log('Request body:', JSON.stringify(req.body, null, 2));
+            }
+            
+            let transport: StreamableHTTPServerTransport;
+            
+            if (sessionId && transports.streamable[sessionId]) {
                 // Reuse existing transport for the session
-                transport = transports[sessionId];
-            } else if (!sessionId && isInitializeRequest(req.body)) {
-                // Create a new transport and server instance for a new session
-                const newSessionId = randomUUID();
-                transport = new StreamableHTTPServerTransport({
-                    sessionIdGenerator: () => newSessionId,
-                    onsessioninitialized: (initSessionId) => {
-                        transports[initSessionId] = transport; // Store transport when session starts
-                        console.log(`MCP Session initialized: ${initSessionId}`);
-                    }
-                });
-
-                const server = createMcpServer(); // Create a new server instance for isolation
-
-                // Clean up transport when closed
-                transport.onclose = () => {
-                    if (transport.sessionId) {
-                        delete transports[transport.sessionId];
-                        console.log(`MCP Session closed: ${transport.sessionId}`);
-                    }
-                    server.close(); // Close the associated MCP server instance
-                };
-
-                await server.connect(transport);
-
+                console.log(`Using existing transport for session ${sessionId}`);
+                transport = transports.streamable[sessionId];
+            } else if (req.method === 'POST' && !sessionId) {
+                // Check if this is an initialization request
+                const isInitReq = isInitializeRequest(req.body);
+                console.log('Is initialize request:', isInitReq);
+                
+                // Manual validation as fallback for initialize requests
+                const isManuallyValidated = 
+                    req.body?.jsonrpc === '2.0' && 
+                    req.body?.method === 'initialize' && 
+                    req.body?.params?.client_name && 
+                    req.body?.params?.client_version && 
+                    req.body?.id !== undefined;
+                
+                if (isInitReq || isManuallyValidated) {
+                    console.log('Initialize request received:', JSON.stringify(req.body));
+                    
+                    // Create event store for resumability with the Streamable HTTP transport
+                    const eventStore = new InMemoryEventStore();
+                    
+                    // Create a new transport for a new session
+                    transport = new StreamableHTTPServerTransport({
+                        sessionIdGenerator: () => randomUUID(),
+                        eventStore,
+                        onsessioninitialized: (initSessionId) => {
+                            // Store transport when session is initialized
+                            transports.streamable[initSessionId] = transport;
+                            console.log(`MCP Session initialized: ${initSessionId}`);
+                        }
+                    });
+                    
+                    // Set up cleanup when transport is closed
+                    transport.onclose = () => {
+                        if (transport.sessionId) {
+                            delete transports.streamable[transport.sessionId];
+                            console.log(`MCP Session closed: ${transport.sessionId}`);
+                        }
+                    };
+                    
+                    // Create and connect to a new MCP server instance
+                    const server = createMcpServer();
+                    await server.connect(transport);
+                } else {
+                    // Not a valid initialize request
+                    console.log('Invalid request: Not an initialization request and no session ID');
+                    res.status(400).json({
+                        jsonrpc: '2.0',
+                        error: {
+                            code: -32000,
+                            message: 'Bad Request: Not an initialization request and missing session ID',
+                        },
+                        id: req.body?.id ?? null,
+                    });
+                    return;
+                }
             } else {
-                // Invalid request (e.g., message without session ID before initialization)
+                // Other invalid cases (like expired session ID)
+                const errorMessage = sessionId 
+                    ? `Bad Request: Session ID ${sessionId} not found` 
+                    : `Bad Request: Missing session ID (Method: ${req.method})`;
+                
+                console.log(errorMessage);
                 res.status(400).json({
                     jsonrpc: '2.0',
                     error: {
                         code: -32000,
-                        message: 'Bad Request: Missing or invalid session ID, or not an Initialize request.',
+                        message: errorMessage,
                     },
                     id: req.body?.id ?? null,
                 });
                 return;
             }
-
-            // Handle the MCP request using the appropriate transport
-            await transport.handleRequest(req, res, req.body);
-
-            // Ensure cleanup if the client disconnects unexpectedly
+            
+            // Handle the request with the appropriate transport
+            await transport.handleRequest(req, res, req.method === 'POST' ? req.body : undefined);
+            
+            // Set up cleanup for unexpected disconnections
             res.on('close', () => {
                 if (!res.writableEnded) {
                     console.log(`Request closed unexpectedly for session: ${transport.sessionId}`);
-                    // Transport and server cleanup is handled by transport.onclose
                 }
             });
-
+            
         } catch (error) {
             console.error('Error handling MCP request:', error);
             if (!res.headersSent) {
@@ -294,53 +380,135 @@ if (useStdio) {
                     jsonrpc: '2.0',
                     error: {
                         code: -32603,
-                        message: 'Internal server error during MCP request handling.',
+                        message: 'Internal server error',
                     },
                     id: req.body?.id ?? null,
                 });
             }
-            // Attempt to close transport if an error occurred during setup/handling
-            if (sessionId && transports[sessionId]) {
-                transports[sessionId].close();
-            }
         }
     });
 
-    // Define a reusable handler for GET and DELETE requests
-    const handleSessionRequest = async (req: Request, res: Response) => {
-        const sessionId = req.headers['mcp-session-id'] as string | undefined;
-        if (!sessionId || !transports[sessionId]) {
+    //=============================================================================
+    // DEPRECATED HTTP+SSE TRANSPORT (PROTOCOL VERSION 2024-11-05)
+    //=============================================================================
+
+    // Legacy SSE endpoint for older clients
+    app.get('/sse', async (req: Request, res: Response) => {
+        console.log('Received GET request to /sse (deprecated SSE transport)');
+        
+        // Add legacy protocol version to response headers
+        res.setHeader('MCP-Protocol-Version', MCP_PROTOCOL_VERSION_LEGACY);
+        
+        // Create SSE transport for legacy clients
+        const transport = new SSEServerTransport('/messages', res);
+        transports.sse[transport.sessionId] = transport;
+        
+        // Clean up transport when connection is closed
+        res.on("close", () => {
+            delete transports.sse[transport.sessionId];
+            console.log(`SSE transport closed for session ${transport.sessionId}`);
+        });
+        
+        const server = createMcpServer();
+        await server.connect(transport);
+    });
+
+    // Legacy message endpoint for older clients
+    app.post("/messages", async (req: Request, res: Response) => {
+        const sessionId = req.query.sessionId as string;
+        
+        // Add legacy protocol version to response headers
+        res.setHeader('MCP-Protocol-Version', MCP_PROTOCOL_VERSION_LEGACY);
+        
+        const transport = transports.sse[sessionId];
+        if (transport) {
+            try {
+                // Handle the message properly - SSEServerTransport no longer has receiveMessage
+                await transport.handlePostMessage(req, res, req.body);
+            } catch (error) {
+                console.error('Error processing message:', error);
+                res.status(500).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32603,
+                        message: 'Internal server error',
+                    },
+                    id: req.body.id,
+                });
+            }
+        } else {
             res.status(400).json({
                 jsonrpc: '2.0',
                 error: {
                     code: -32000,
-                    message: 'Bad Request: Invalid or missing session ID',
+                    message: 'Bad Request: No valid session found for sessionId',
                 },
-                id: null,
+                id: req.body.id,
             });
-            return;
         }
-        
-        const transport = transports[sessionId];
-        await transport.handleRequest(req, res);
-    };
-
-    // Handle GET requests for server-to-client notifications via SSE
-    app.get('/mcp', handleSessionRequest);
-
-    // Handle DELETE requests for session termination
-    app.delete('/mcp', handleSessionRequest);
+    });
 
     // --- Start Server ---
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
         console.log(`WordPress MCP Server listening on port ${PORT}`);
+        console.log(`
+==============================================
+SUPPORTED TRANSPORT OPTIONS:
+
+1. Streamable Http (Protocol version: ${MCP_PROTOCOL_VERSION_CURRENT})
+   Endpoint: /mcp
+   Methods: GET, POST, DELETE
+   Usage: 
+     - Initialize with POST to /mcp
+     - Establish SSE stream with GET to /mcp
+     - Send requests with POST to /mcp
+     - Terminate session with DELETE to /mcp
+
+2. Http + SSE (Protocol version: ${MCP_PROTOCOL_VERSION_LEGACY}) [DEPRECATED]
+   Endpoints: /sse (GET) and /messages (POST)
+   Usage:
+     - Establish SSE stream with GET to /sse
+     - Send requests with POST to /messages?sessionId=<id>
+==============================================
+`);
         console.log(`Using WordPress API URL: ${WORDPRESS_API_URL}`);
+        
         if (WORDPRESS_AUTH_USER) {
             console.log(`Using Basic Authentication for user: ${WORDPRESS_AUTH_USER}`);
         } else {
             console.warn('WordPress authentication not configured. API requests might fail if authentication is required.');
             console.warn('Set WORDPRESS_API_URL, WORDPRESS_AUTH_USER, and WORDPRESS_AUTH_PASS environment variables.');
         }
+    });
+
+    // Handle server shutdown
+    process.on('SIGINT', async () => {
+        console.log('Shutting down server...');
+
+        // Close all active transports to properly clean up resources
+        for (const sessionId in transports.streamable) {
+            try {
+                console.log(`Closing Streamable HTTP transport for session ${sessionId}`);
+                await transports.streamable[sessionId].close();
+                delete transports.streamable[sessionId];
+            } catch (error) {
+                console.error(`Error closing Streamable HTTP transport for session ${sessionId}:`, error);
+            }
+        }
+
+        // Close any active SSE transports
+        for (const sessionId in transports.sse) {
+            try {
+                console.log(`Closing SSE transport for session ${sessionId}`);
+                await transports.sse[sessionId].close();
+                delete transports.sse[sessionId];
+            } catch (error) {
+                console.error(`Error closing SSE transport for session ${sessionId}:`, error);
+            }
+        }
+        
+        console.log('Server shutdown complete');
+        process.exit(0);
     });
 }
