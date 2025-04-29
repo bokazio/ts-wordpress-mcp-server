@@ -133,7 +133,7 @@ export const createPostTool = {
         title: z.string().describe('The title of the post.'),
         content: z.string().describe('The HTML content of the post.'),
         status: z.enum(['publish', 'pending', 'draft', 'private']).optional().default('draft')
-            .describe('The status of the post (publish, pending, draft, private). Defaults to draft.'),
+            .describe('The status of the post. Possible values: "publish", "pending", "draft", "private". Defaults to "draft".'),
     },
     handler: async ({ title, content, status }: {
         title: string;
@@ -164,30 +164,34 @@ export const updatePostTool = {
     description: 'Update an existing WordPress post by ID and modify its properties.',
     parameters: {
         post_id: z.number().describe('The ID of the post to update.'),
-        title: z.string().optional().describe('The new title for the post.'),
-        content: z.string().optional().describe('The new HTML content for the post.'),
-        status: z.enum(['publish', 'pending', 'draft', 'private']).optional()
-            .describe('The new status for the post.'),
+        title: z.string().optional().nullable().describe('The new title for the post.'),
+        content: z.string().optional().nullable().describe('The new HTML content for the post.'),
+        status: z.enum(['publish', 'pending', 'draft', 'private']).optional().nullable()
+            .describe('The new status for the post. Possible values: "publish", "pending", "draft", "private".'),
     },
     handler: async ({ post_id, title, content, status }: {
         post_id: number;
-        title?: string;
-        content?: string;
-        status?: 'publish' | 'pending' | 'draft' | 'private';
+        title?: string | null;
+        content?: string | null;
+        status?: 'publish' | 'pending' | 'draft' | 'private' | null;
     }) => {
         try {
             console.log(`Preparing to update post with ID: ${post_id}`);
             
-            // Prepare update data - only include the fields that are provided
+            // Prepare update data - only include valid fields that are provided
             const updateData: { [key: string]: any } = {};
-            if (title !== undefined) updateData.title = title;
-            if (content !== undefined) updateData.content = content;
-            if (status !== undefined) updateData.status = status;
+            
+            // Only add fields that have actual values (not undefined or null)
+            if (title !== undefined && title !== null) updateData.title = title;
+            if (content !== undefined && content !== null) updateData.content = content;
+            if (status !== undefined && status !== null) updateData.status = status;
+
+            console.log(`Update data prepared:`, JSON.stringify(updateData));
 
             if (Object.keys(updateData).length === 0) {
                 return { 
                     content: [
-                        { type: "text" as const, text: `No updates specified for post ID ${post_id}. Please provide at least one field to update (title, content, or status).` }
+                        { type: "text" as const, text: `No valid updates specified for post ID ${post_id}. Please provide at least one valid field to update (title, content, or status).` }
                     ] 
                 };
             }
