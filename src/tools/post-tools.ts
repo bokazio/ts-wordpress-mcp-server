@@ -164,8 +164,8 @@ export const updatePostTool = {
     description: 'Update an existing WordPress post by ID.',
     parameters: {
         post_id: z.number().describe('The ID of the post to update.'),
-        title: z.string().optional().describe('The new title for the post.'),
-        content: z.string().optional().describe('The new HTML content for the post.'),
+        title: z.string().describe('The new title for the post.'),
+        content: z.string().describe('The new HTML content for the post.'),
         status: z.enum(['publish', 'pending', 'draft', 'private']).optional()
             .describe('The new status for the post.'),
     },
