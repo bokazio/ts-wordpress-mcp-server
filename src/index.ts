@@ -6,12 +6,15 @@
  */
 
 import express from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
     useStdio,
     PORT,
     WORDPRESS_API_URL,
-    WORDPRESS_AUTH_USER
+    WORDPRESS_AUTH_USER,
+    RATE_LIMIT
 } from './config/index.js';
 import { createMcpServer } from './server/mcp-server.js';
 import {
@@ -41,7 +44,7 @@ if (useStdio) {
     console.error('WordPress MCP Server started in stdio mode (MCP_TRANSPORT=stdio)');
     console.error(`Using WordPress API URL: ${WORDPRESS_API_URL}`);
     if (WORDPRESS_AUTH_USER) {
-        console.error(`Using Basic Authentication for user: ${WORDPRESS_AUTH_USER}`);
+        console.error(`Using Authentication for user: ${WORDPRESS_AUTH_USER}`);
     } else {
         console.error('WordPress authentication not configured. API requests might fail if authentication is required.');
     }
@@ -50,9 +53,61 @@ if (useStdio) {
     console.log('Starting WordPress MCP Server in HTTP mode...');
     const app = express();
 
-    // Configure Express to handle larger payloads
-    app.use(express.json({ limit: '50mb' }));
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    // Security middleware with Helmet
+    app.use(helmet({
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'"],
+                imgSrc: ["'self'", "data:"],
+                connectSrc: ["'self'"],
+                fontSrc: ["'self'"],
+                objectSrc: ["'none'"],
+                mediaSrc: ["'self'"],
+                frameSrc: ["'none'"],
+            }
+        },
+        xssFilter: true,
+        noSniff: true,
+        referrerPolicy: { policy: 'same-origin' }
+    }));
+
+    // Set security headers
+    app.use((req, res, next) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('X-XSS-Protection', '1; mode=block');
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        next();
+    });
+
+    // Rate limiting
+    const apiLimiter = rateLimit({
+        windowMs: 60 * 1000, // 1 minute
+        max: RATE_LIMIT, // Configurable request limit
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: 'Too many requests from this IP, please try again after a minute'
+    });
+    app.use(apiLimiter);
+
+    // Configure Express to handle larger payloads but with size limits
+    app.use(express.json({ 
+        limit: '10mb', 
+        type: ['application/json', 'application/json-rpc'] 
+    }));
+    app.use(express.urlencoded({ 
+        limit: '10mb', 
+        extended: true 
+    }));
+
+    // Add request logging middleware
+    app.use((req, res, next) => {
+        // Don't log the entire body for privacy/security reasons
+        console.log(`${new Date().toISOString()} | ${req.method} ${req.url} | IP: ${req.ip}`);
+        next();
+    });
 
     //=============================================================================
     // MODERN STREAMABLE HTTP TRANSPORT (PROTOCOL VERSION 2025-03-26)
@@ -71,10 +126,30 @@ if (useStdio) {
     // Legacy message endpoint for older clients
     app.post("/messages", handleSseMessage);
 
+    // Add error handling middleware
+    app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+        console.error('Express error handler caught:', err);
+        
+        if (!res.headersSent) {
+            res.status(500).json({
+                jsonrpc: '2.0',
+                error: {
+                    code: -32000,
+                    message: 'Internal server error'
+                    // Don't expose details of the error in production
+                },
+                id: null
+            });
+        }
+    });
+
     // --- Start Server ---
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
         printServerStartupInfo();
     });
+
+    // Set timeout for the server
+    server.timeout = 120000; // 2 minutes
 
     // Handle server shutdown
     process.on('SIGINT', async () => {
@@ -86,8 +161,17 @@ if (useStdio) {
             closeAllSseTransports()
         ]);
 
-        console.log('Server shutdown complete');
-        process.exit(0);
+        // Close the HTTP server
+        server.close(() => {
+            console.log('Server shutdown complete');
+            process.exit(0);
+        });
+
+        // Force exit after 5 seconds if graceful shutdown fails
+        setTimeout(() => {
+            console.log('Forcing shutdown after timeout');
+            process.exit(1);
+        }, 5000);
     });
 }
 
@@ -119,7 +203,7 @@ SUPPORTED TRANSPORT OPTIONS:
     console.log(`Using WordPress API URL: ${WORDPRESS_API_URL}`);
 
     if (WORDPRESS_AUTH_USER) {
-        console.log(`Using Basic Authentication for user: ${WORDPRESS_AUTH_USER}`);
+        console.log(`Using Authentication for user: ${WORDPRESS_AUTH_USER}`);
     } else {
         console.warn('WordPress authentication not configured. API requests might fail if authentication is required.');
         console.warn('Set WORDPRESS_API_URL, WORDPRESS_AUTH_USER, and WORDPRESS_AUTH_PASS environment variables.');

@@ -1,19 +1,22 @@
 {
   "name": "ts-wordpress-mcp",
   "version": "1.0.0",
-  "description": "",
+  "description": "A Model Context Protocol (MCP) server for WordPress content management with enhanced security",
   "main": "index.js",
   "scripts": {
     "build": "tsc --outDir dist",
     "serve": "node dist/index.js",
     "watch": "tsc --watch",
     "clean": "rm -rf dist",
-    "start": "npm run clean && npm run build && npm run serve"
+    "start": "npm run clean && npm run build && npm run serve",
+    "dev": "nodemon --watch src --ext ts --exec 'npm run start'",
+    "lint": "eslint 'src/**/*.ts'"
   },
   "keywords": [
     "wordpress",
     "mcp",
-    "typescript"
+    "typescript",
+    "rest-api"
   ],
   "author": "Jan Krüger",
   "license": "EUPL-1.2",
@@ -23,12 +26,20 @@
     "axios": "^1.8.4",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^7.1.0",
     "zod": "^3.24.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.1",
+    "@types/helmet": "^0.0.48",
     "@types/node": "^22.14.1",
+    "eslint": "^8.57.0",
+    "nodemon": "^3.0.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

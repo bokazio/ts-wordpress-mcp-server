@@ -2,8 +2,9 @@
 
 import { z } from 'zod';
 import { axiosInstance, uploadMedia } from '../config/wordpress-api.js';
+import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE_MB } from '../config/index.js';
 
-// Tool to upload media to WordPress
+// Improved tool to upload media to WordPress with better validation
 export const uploadMediaTool = {
     name: 'upload_media',
     description: 'Upload a media file to the WordPress media library.',
@@ -24,14 +25,49 @@ export const uploadMediaTool = {
         description?: string;
     }) => {
         try {
-            // Decode the base64 content
-            const buffer = Buffer.from(file_content, 'base64');
+            // Validate file extension
+            const fileExtension = file_name.split('.').pop()?.toLowerCase() || '';
+            
+            if (!ALLOWED_FILE_TYPES.includes(fileExtension)) {
+                return {
+                    content: [
+                        { 
+                            type: "text" as const, 
+                            text: `Error: Unsupported file type: ${fileExtension}. Allowed types: ${ALLOWED_FILE_TYPES.join(', ')}` 
+                        }
+                    ]
+                };
+            }
 
-            // Log the file size for debugging
-            console.log(`Uploading file: ${file_name}, size: ${buffer.length / 1024} KB`);
+            // Securely decode the base64 content with error handling
+            let buffer: Buffer;
+            try {
+                buffer = Buffer.from(file_content, 'base64');
+            } catch (error) {
+                return {
+                    content: [
+                        { type: "text" as const, text: `Error: Invalid file content. The content must be base64 encoded.` }
+                    ]
+                };
+            }
+
+            // Log the file size for debugging (without exposing content)
+            const fileSizeMB = buffer.length / (1024 * 1024);
+            console.log(`Uploading file: ${file_name}, size: ${fileSizeMB.toFixed(2)} MB`);
+
+            // Check file size against configured limit
+            if (fileSizeMB > MAX_FILE_SIZE_MB) {
+                return {
+                    content: [
+                        { 
+                            type: "text" as const, 
+                            text: `Error: File size (${fileSizeMB.toFixed(2)} MB) exceeds the maximum allowed size of ${MAX_FILE_SIZE_MB} MB` 
+                        }
+                    ]
+                };
+            }
 
             // Determine content type based on file extension
-            const fileExtension = file_name.split('.').pop()?.toLowerCase() || '';
             const contentTypeMap: { [key: string]: string } = {
                 'jpg': 'image/jpeg',
                 'jpeg': 'image/jpeg',
@@ -42,6 +78,7 @@ export const uploadMediaTool = {
                 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 'mp3': 'audio/mpeg',
                 'mp4': 'video/mp4',
+                'webp': 'image/webp',
             };
 
             const contentType = contentTypeMap[fileExtension] || 'application/octet-stream';
@@ -69,25 +106,38 @@ export const uploadMediaTool = {
                         text: `Media uploaded successfully with ID: ${mediaId}. URL: ${uploadResponse.data.source_url}`
                     },
                 ],
+                data: {
+                    id: mediaId,
+                    url: uploadResponse.data.source_url,
+                    title: uploadResponse.data.title?.rendered || title,
+                    mime_type: uploadResponse.data.mime_type
+                }
             };
         } catch (error: any) {
-            // Provide more detailed error information
+            // More user-friendly error handling that doesn't expose sensitive information
             console.error('Error uploading media to WordPress:');
-
+            
+            let errorMessage = 'Failed to upload media';
+            let statusCode = 'unknown';
+            
             if (error.response) {
-                // The request was made and the server responded with a status code
-                console.error(`Status: ${error.response.status}`);
-                console.error('Response data:', error.response.data);
-                console.error('Response headers:', error.response.headers);
+                statusCode = error.response.status;
+                errorMessage = error.response.data?.message || 
+                              `Server returned error code ${statusCode}`;
             } else if (error.request) {
-                // The request was made but no response was received
-                console.error('No response received:', error.request);
+                errorMessage = 'No response received from server. Please check your connection.';
             } else {
-                // Something happened in setting up the request
-                console.error('Error message:', error.message);
+                errorMessage = error.message || errorMessage;
             }
-
-            throw new Error(`Failed to upload media: ${error.response?.data?.message || error.message}`);
+            
+            return {
+                content: [
+                    { 
+                        type: "text" as const, 
+                        text: `Error uploading media: ${errorMessage}` 
+                    }
+                ]
+            };
         }
     }
 };
