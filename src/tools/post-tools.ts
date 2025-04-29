@@ -161,11 +161,11 @@ export const createPostTool = {
 // Tool to update an existing WordPress post
 export const updatePostTool = {
     name: 'update_post',
-    description: 'Update an existing WordPress post by ID.',
+    description: 'Update an existing WordPress post by ID and modify its properties.',
     parameters: {
         post_id: z.number().describe('The ID of the post to update.'),
-        title: z.string().describe('The new title for the post.'),
-        content: z.string().describe('The new HTML content for the post.'),
+        title: z.string().optional().describe('The new title for the post.'),
+        content: z.string().optional().describe('The new HTML content for the post.'),
         status: z.enum(['publish', 'pending', 'draft', 'private']).optional()
             .describe('The new status for the post.'),
     },
@@ -198,7 +198,15 @@ export const updatePostTool = {
                 const currentTitle = currentPost.data.title?.rendered || '[No title]';
                 console.log(`Found post ID ${post_id} with title "${currentTitle}" - proceeding with update`);
             } catch (error: any) {
-                // If we can't get the current post, continue with the update anyway
+                // If we can't get the current post, the ID might be invalid
+                if (error.response?.status === 404) {
+                    return { 
+                        content: [
+                            { type: "text" as const, text: `Post with ID ${post_id} not found. Please check the post ID and try again.` }
+                        ] 
+                    };
+                }
+                // Otherwise, continue with the update anyway
                 console.log(`Could not retrieve current post details for ID ${post_id}, but will attempt update anyway`);
             }
 
