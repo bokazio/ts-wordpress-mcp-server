@@ -20,14 +20,9 @@ export async function handleStreamableHttpRequest(req: Request, res: Response): 
     // Add MCP protocol version to response headers
     res.setHeader('MCP-Protocol-Version', MCP_PROTOCOL_VERSION_CURRENT);
 
-    // Get session ID from header
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-
     try {
-        // Log incoming request for debugging
-        if (req.method === 'POST' && req.body) {
-            console.log('Request body:', JSON.stringify(req.body, null, 2));
-        }
+        // Get session ID from header
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
         let transport: StreamableHTTPServerTransport;
 
