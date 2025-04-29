@@ -176,26 +176,45 @@ export const updatePostTool = {
         status?: 'publish' | 'pending' | 'draft' | 'private';
     }) => {
         try {
-            // Prepare update data
+            console.log(`Preparing to update post with ID: ${post_id}`);
+            
+            // Prepare update data - only include the fields that are provided
             const updateData: { [key: string]: any } = {};
-            if (title) updateData.title = title;
-            if (content) updateData.content = content;
-            if (status) updateData.status = status;
+            if (title !== undefined) updateData.title = title;
+            if (content !== undefined) updateData.content = content;
+            if (status !== undefined) updateData.status = status;
 
             if (Object.keys(updateData).length === 0) {
                 return { 
                     content: [
-                        { type: "text" as const, text: `No updates specified for post ID ${post_id}.` }
+                        { type: "text" as const, text: `No updates specified for post ID ${post_id}. Please provide at least one field to update (title, content, or status).` }
                     ] 
                 };
+            }
+
+            // Get current post details first to show what's changing
+            try {
+                const currentPost = await axiosInstance.get(`/posts/${post_id}`);
+                const currentTitle = currentPost.data.title?.rendered || '[No title]';
+                console.log(`Found post ID ${post_id} with title "${currentTitle}" - proceeding with update`);
+            } catch (error: any) {
+                // If we can't get the current post, continue with the update anyway
+                console.log(`Could not retrieve current post details for ID ${post_id}, but will attempt update anyway`);
             }
 
             // Update the post
             const updateResponse = await axiosInstance.post(`/posts/${post_id}`, updateData);
 
+            // Get the updated fields for confirmation
+            const updatedFields = Object.keys(updateData).map(field => 
+                `${field}: ${field === 'title' ? updateResponse.data.title?.rendered : 
+                 field === 'content' ? '(content updated)' : 
+                 field === 'status' ? updateResponse.data.status : 'updated'}`
+            ).join(', ');
+
             return {
                 content: [
-                    { type: "text" as const, text: `Post ID ${post_id} updated successfully. New Status: ${updateResponse.data.status}. Link: ${updateResponse.data.link}` },
+                    { type: "text" as const, text: `Post ID ${post_id} updated successfully.\nUpdated fields: ${updatedFields}\nCurrent Status: ${updateResponse.data.status}\nLink: ${updateResponse.data.link}` },
                 ],
             };
         } catch (error: any) {
