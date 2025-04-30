@@ -190,6 +190,7 @@ export const updatePostTool = {
         content: z.string().optional().describe('The new HTML content for the post.'),
         status: z.enum(['publish', 'pending', 'draft', 'private']).optional()
             .describe('The new status for the post. Possible values: "publish", "pending", "draft", "private".'),
+        slug: z.string().optional().describe('The new URL-friendly slug for the post. This affects the post\'s permalink.'),
     },
     annotations: {
         destructiveHint: true, // This tool modifies existing content
@@ -201,12 +202,13 @@ export const updatePostTool = {
         title?: string;
         content?: string;
         status?: 'publish' | 'pending' | 'draft' | 'private';
+        slug?: string;
     }) => {
         // Log the raw arguments received by the handler
         console.log(`updatePostTool handler received arguments:`, JSON.stringify(args, null, 2));
         
         // Destructure after logging
-        const { post_id, title, content, status } = args;
+        const { post_id, title, content, status, slug } = args;
 
         try {
             console.log(`Preparing to update post with ID: ${post_id}`);
@@ -216,6 +218,7 @@ export const updatePostTool = {
             if (title !== undefined && title !== null) updateData.title = title; // Check for null
             if (content !== undefined && content !== null) updateData.content = content; // Check for null
             if (status !== undefined) updateData.status = status; // Status is enum, null less likely
+            if (args.slug !== undefined && args.slug !== null) updateData.slug = args.slug; // Add slug if provided
 
             if (Object.keys(updateData).length === 0) {
                 return {
@@ -250,7 +253,8 @@ export const updatePostTool = {
             const updatedFields = Object.keys(updateData).map(field =>
                 `${field}: ${field === 'title' ? updateResponse.data.title?.rendered :
                  field === 'content' ? '(content updated)' :
-                 field === 'status' ? updateResponse.data.status : 'updated'}`
+                 field === 'status' ? updateResponse.data.status :
+                 field === 'slug' ? updateResponse.data.slug : 'updated'}`
             ).join(', ');
 
             return {
