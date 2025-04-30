@@ -13,6 +13,10 @@ export const searchPostTool = {
         status: z.enum(['any', 'publish', 'draft', 'pending', 'private']).optional().default('any')
             .describe('Status of posts to search for. Default is "any" which includes all statuses.'),
     },
+    annotations: {
+        readOnlyHint: true, // This tool only reads data, doesn't modify anything
+        openWorldHint: true, // Interacts with an external WordPress system
+    },
     handler: async ({ search_term, per_page = 5, status = 'any' }: {
         search_term: string;
         per_page?: number;
@@ -120,7 +124,14 @@ If you have draft posts, make sure to set status="draft" or status="any" to incl
                 console.error('Response data:', JSON.stringify(error.response.data));
                 console.error('Response headers:', JSON.stringify(error.response.headers));
             }
-            throw new Error(`Failed to search posts: ${error.response?.data?.message || error.message}`);
+            
+            // Return error as part of the result instead of throwing
+            return {
+                content: [
+                    { type: "text" as const, text: `Failed to search posts: ${error.response?.data?.message || error.message}` }
+                ],
+                isError: true // Indicate tool execution error
+            };
         }
     }
 };
@@ -134,6 +145,10 @@ export const createPostTool = {
         content: z.string().describe('The HTML content of the post.'),
         status: z.enum(['publish', 'pending', 'draft', 'private']).optional().default('draft')
             .describe('The status of the post (publish, pending, draft, private). Defaults to draft.'),
+    },
+    annotations: {
+        destructiveHint: true, // This tool creates new content
+        openWorldHint: true, // Interacts with an external WordPress system
     },
     handler: async ({ title, content, status }: {
         title: string;
@@ -153,7 +168,14 @@ export const createPostTool = {
             };
         } catch (error: any) {
             console.error('Error creating WordPress post:', error.response?.data || error.message);
-            throw new Error(`Failed to create post: ${error.response?.data?.message || error.message}`);
+            
+            // Return error as part of the result instead of throwing
+            return {
+                content: [
+                    { type: "text" as const, text: `Failed to create post: ${error.response?.data?.message || error.message}` }
+                ],
+                isError: true // Indicate tool execution error
+            };
         }
     }
 };
@@ -168,6 +190,11 @@ export const updatePostTool = {
         content: z.string().optional().describe('The new HTML content for the post.'),
         status: z.enum(['publish', 'pending', 'draft', 'private']).optional()
             .describe('The new status for the post. Possible values: "publish", "pending", "draft", "private".'),
+    },
+    annotations: {
+        destructiveHint: true, // This tool modifies existing content
+        idempotentHint: false, // Multiple calls with same params may have different results
+        openWorldHint: true, // Interacts with an external WordPress system
     },
     handler: async (args: { // Renamed input to 'args' for clarity
         post_id: number;
@@ -233,7 +260,14 @@ export const updatePostTool = {
             };
         } catch (error: any) {
             console.error('Error updating WordPress post:', error.response?.data || error.message);
-            throw new Error(`Failed to update post: ${error.response?.data?.message || error.message}`);
+            
+            // Return error as part of the result instead of throwing
+            return {
+                content: [
+                    { type: "text" as const, text: `Failed to update post: ${error.response?.data?.message || error.message}` }
+                ],
+                isError: true // Indicate tool execution error
+            };
         }
     }
 };
@@ -244,6 +278,10 @@ export const getPostTool = {
     description: 'Get a specific WordPress post by ID and return its content, title, and other fields.',
     parameters: {
         post_id: z.number().describe('The ID of the post to retrieve.'),
+    },
+    annotations: {
+        readOnlyHint: true, // This tool only reads data, doesn't modify anything
+        openWorldHint: true, // Interacts with an external WordPress system
     },
     handler: async ({ post_id }: { post_id: number }) => {
         try {
@@ -333,7 +371,13 @@ ${excerpt}
                     };
                 }
             }
-            throw new Error(`Failed to get post: ${error.response?.data?.message || error.message}`);
+            // Return error as part of the result instead of throwing
+            return {
+                content: [
+                    { type: "text" as const, text: `Failed to get post: ${error.response?.data?.message || error.message}` }
+                ],
+                isError: true // Indicate tool execution error
+            };
         }
     }
 };

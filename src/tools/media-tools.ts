@@ -16,6 +16,10 @@ export const uploadMediaTool = {
         alt_text: z.string().optional().describe('Alternative text for the media item.'),
         description: z.string().optional().describe('Description for the media item.')
     },
+    annotations: {
+        destructiveHint: true, // This tool creates new content
+        openWorldHint: true, // Interacts with an external WordPress system
+    },
     handler: async ({ file_content, file_name, title, caption, alt_text, description }: {
         file_content: string;
         file_name: string;
@@ -31,11 +35,12 @@ export const uploadMediaTool = {
             if (!ALLOWED_FILE_TYPES.includes(fileExtension)) {
                 return {
                     content: [
-                        { 
-                            type: "text" as const, 
-                            text: `Error: Unsupported file type: ${fileExtension}. Allowed types: ${ALLOWED_FILE_TYPES.join(', ')}` 
+                        {
+                            type: "text" as const,
+                            text: `Error: Unsupported file type: ${fileExtension}. Allowed types: ${ALLOWED_FILE_TYPES.join(', ')}`
                         }
-                    ]
+                    ],
+                    isError: true // Indicate tool execution error
                 };
             }
 
@@ -47,7 +52,8 @@ export const uploadMediaTool = {
                 return {
                     content: [
                         { type: "text" as const, text: `Error: Invalid file content. The content must be base64 encoded.` }
-                    ]
+                    ],
+                    isError: true // Indicate tool execution error
                 };
             }
 
@@ -59,11 +65,12 @@ export const uploadMediaTool = {
             if (fileSizeMB > MAX_FILE_SIZE_MB) {
                 return {
                     content: [
-                        { 
-                            type: "text" as const, 
-                            text: `Error: File size (${fileSizeMB.toFixed(2)} MB) exceeds the maximum allowed size of ${MAX_FILE_SIZE_MB} MB` 
+                        {
+                            type: "text" as const,
+                            text: `Error: File size (${fileSizeMB.toFixed(2)} MB) exceeds the maximum allowed size of ${MAX_FILE_SIZE_MB} MB`
                         }
-                    ]
+                    ],
+                    isError: true // Indicate tool execution error
                 };
             }
 
@@ -132,11 +139,12 @@ export const uploadMediaTool = {
             
             return {
                 content: [
-                    { 
-                        type: "text" as const, 
-                        text: `Error uploading media: ${errorMessage}` 
+                    {
+                        type: "text" as const,
+                        text: `Error uploading media: ${errorMessage}`
                     }
-                ]
+                ],
+                isError: true // Indicate tool execution error
             };
         }
     }

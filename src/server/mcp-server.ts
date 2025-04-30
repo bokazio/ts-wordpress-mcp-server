@@ -11,6 +11,10 @@ export function createMcpServer(): McpServer {
         name: 'WordPress MCP Server',
         version: '1.0.0',
         description: 'A server for managing WordPress posts via the Model Context Protocol.'
+    }, {
+        capabilities: {
+            tools: { listChanged: false }, // We support tools, no dynamic changes
+        },
     });
 
     // Register WordPress site information tool

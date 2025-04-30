@@ -8,6 +8,10 @@ export const wordPressSiteInfoTool = {
     name: 'wordpress_site_info',
     description: 'Get information about the WordPress site, including available content types and API status.',
     parameters: {},
+    annotations: {
+        readOnlyHint: true, // This tool only reads data, doesn't modify anything
+        openWorldHint: true, // Interacts with an external WordPress system
+    },
     handler: async () => {
         try {
             const siteInfo = await checkWordPressSite();
@@ -15,11 +19,12 @@ export const wordPressSiteInfoTool = {
             if (!siteInfo.isAccessible) {
                 return {
                     content: [
-                        { 
-                            type: "text" as const, 
-                            text: `⚠️ WordPress site is not accessible.\nError: ${siteInfo.error}\nMessage: ${siteInfo.message}\n\nPlease check your WordPress API URL and credentials.` 
+                        {
+                            type: "text" as const,
+                            text: `⚠️ WordPress site is not accessible.\nError: ${siteInfo.error}\nMessage: ${siteInfo.message}\n\nPlease check your WordPress API URL and credentials.`
                         }
-                    ]
+                    ],
+                    isError: true // Indicate tool execution error
                 };
             }
             
@@ -66,11 +71,12 @@ Authentication: ${Object.keys(siteInfo.site).includes('authentication') ? 'Requi
             console.error('Error getting WordPress site information:', error);
             return {
                 content: [
-                    { 
-                        type: "text" as const, 
-                        text: `Failed to get WordPress site information: ${error.message}` 
+                    {
+                        type: "text" as const,
+                        text: `Failed to get WordPress site information: ${error.message}`
                     }
-                ]
+                ],
+                isError: true // Indicate tool execution error
             };
         }
     }
