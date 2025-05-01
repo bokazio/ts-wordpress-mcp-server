@@ -17,6 +17,9 @@ export const WORDPRESS_API_URL = process.env.WORDPRESS_API_URL || 'YOUR_WORDPRES
 export const WORDPRESS_AUTH_USER = process.env.WORDPRESS_AUTH_USER;
 export const WORDPRESS_AUTH_PASS = process.env.WORDPRESS_AUTH_PASS;
 
+// MCP Server Authentication for HTTP transport
+export const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
+
 // More secure function to generate the auth header with timestamp
 export function getAuthHeader() {
     if (!WORDPRESS_AUTH_USER || !WORDPRESS_AUTH_PASS) {
@@ -31,7 +34,7 @@ export function getAuthHeader() {
         // Add request timestamp to help prevent replay attacks when used with HTTPS
         const timestamp = Date.now().toString();
         
-        return { 
+        return {
             'Authorization': `Basic ${encoded}`,
             'X-Request-Timestamp': timestamp
         };
@@ -41,11 +44,38 @@ export function getAuthHeader() {
     }
 }
 
+
 // Server configuration
 export const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Transport mode
 export const useStdio = process.env.MCP_TRANSPORT?.toLowerCase() === 'stdio';
+
+/**
+ * Check if HTTP transport is being used
+ */
+export const isHttpTransport = !useStdio;
+
+/**
+ * Validate bearer token for HTTP transport
+ * @param authHeader The Authorization header from the request
+ * @returns True if authentication is valid or not required
+ */
+export function validateBearerToken(authHeader?: string): boolean {
+    // If not using HTTP transport or no token is configured, skip authentication
+    if (!isHttpTransport || !MCP_AUTH_TOKEN) {
+        return true;
+    }
+    
+    // If token is configured but no auth header provided, authentication fails
+    if (!authHeader) {
+        return false;
+    }
+    
+    // Check if the provided token matches the configured token
+    const [authType, token] = authHeader.split(' ');
+    return authType === 'Bearer' && token === MCP_AUTH_TOKEN;
+}
 
 // Security settings
 export const MAX_FILE_SIZE_MB = process.env.MAX_FILE_SIZE_MB ? 

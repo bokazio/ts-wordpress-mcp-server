@@ -68,6 +68,7 @@ export async function handleStreamableHttpRequest(req: Request, res: Response): 
     console.log(`[${requestId}] Received ${req.method} request to /mcp`);
 
     try {
+        // MCP endpoint does not require bearer token authentication
         // Get session ID from header
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
 

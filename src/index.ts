@@ -14,7 +14,8 @@ import {
     PORT,
     WORDPRESS_API_URL,
     WORDPRESS_AUTH_USER,
-    RATE_LIMIT
+    RATE_LIMIT,
+    MCP_AUTH_TOKEN
 } from './config/index.js';
 import { createMcpServer } from './server/mcp-server.js';
 import {
@@ -203,9 +204,18 @@ SUPPORTED TRANSPORT OPTIONS:
     console.log(`Using WordPress API URL: ${WORDPRESS_API_URL}`);
 
     if (WORDPRESS_AUTH_USER) {
-        console.log(`Using Authentication for user: ${WORDPRESS_AUTH_USER}`);
+        console.log(`Using WordPress Authentication for user: ${WORDPRESS_AUTH_USER}`);
     } else {
         console.warn('WordPress authentication not configured. API requests might fail if authentication is required.');
         console.warn('Set WORDPRESS_API_URL, WORDPRESS_AUTH_USER, and WORDPRESS_AUTH_PASS environment variables.');
+    }
+    
+    // Log MCP server authentication status
+    if (MCP_AUTH_TOKEN) {
+        console.log('Bearer Token Authentication is enabled for SSE endpoint (/sse)');
+        console.log('MCP endpoint (/mcp) does not require authentication');
+    } else {
+        console.warn('Bearer Token Authentication is not configured for SSE endpoint.');
+        console.warn('Set MCP_AUTH_TOKEN environment variable for secure SSE transport.');
     }
 }

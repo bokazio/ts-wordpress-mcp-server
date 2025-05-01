@@ -2,7 +2,7 @@
 
 import { Request, Response } from 'express';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { MCP_PROTOCOL_VERSION_LEGACY } from '../config/index.js';
+import { MCP_PROTOCOL_VERSION_LEGACY, validateBearerToken } from '../config/index.js';
 import { createMcpServer } from '../server/mcp-server.js';
 
 // Store for all active SSE transports
@@ -16,6 +16,14 @@ export async function handleSseConnection(req: Request, res: Response): Promise<
 
     // Add legacy protocol version to response headers
     res.setHeader('MCP-Protocol-Version', MCP_PROTOCOL_VERSION_LEGACY);
+    
+    // Validate bearer token if HTTP transport is used
+    const authHeader = req.headers.authorization as string | undefined;
+    if (!validateBearerToken(authHeader)) {
+        console.log('Authentication failed: Invalid or missing bearer token');
+        res.status(401).send('Unauthorized: Invalid or missing bearer token');
+        return;
+    }
 
     // Create SSE transport for legacy clients
     const transport = new SSEServerTransport('/messages', res);
@@ -39,6 +47,21 @@ export async function handleSseMessage(req: Request, res: Response): Promise<voi
 
     // Add legacy protocol version to response headers
     res.setHeader('MCP-Protocol-Version', MCP_PROTOCOL_VERSION_LEGACY);
+    
+    // Validate bearer token if HTTP transport is used
+    const authHeader = req.headers.authorization as string | undefined;
+    if (!validateBearerToken(authHeader)) {
+        console.log('Authentication failed: Invalid or missing bearer token');
+        res.status(401).json({
+            jsonrpc: '2.0',
+            error: {
+                code: -32001,
+                message: 'Unauthorized: Invalid or missing bearer token',
+            },
+            id: req.body?.id ?? null,
+        });
+        return;
+    }
 
     const transport = sseTransports[sessionId];
     if (transport) {
