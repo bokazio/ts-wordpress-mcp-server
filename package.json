@@ -1,7 +1,7 @@
 {
-  "name": "ts-wordpress-mcp",
-  "version": "1.0.0",
-  "description": "A Model Context Protocol (MCP) server for WordPress content management with enhanced security",
+  "name": "@bokazio/ts-wordpress-mcp-server",
+  "version": "0.3.0",
+  "description": "A Model Context Protocol (MCP) server for WordPress content management",
   "main": "index.js",
   "scripts": {
     "build": "tsc --outDir dist",
@@ -19,28 +19,28 @@
     "rest-api"
   ],
   "author": "Jan Krüger",
-  "license": "EUPL-1.2",
+  "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.11.0",
+    "@modelcontextprotocol/sdk": "^1.11.1",
     "axios": "^1.9.0",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
-    "zod": "^3.24.3"
+    "zod": "^3.24.4"
   },
   "devDependencies": {
-    "@eslint/js": "^9.25.1",
+    "@eslint/js": "^9.26.0",
     "@types/express": "^5.0.1",
-    "@types/node": "^22.15.3",
-    "@typescript-eslint/parser": "^8.31.1",
-    "eslint": "^9.25.1",
-    "globals": "^16.0.0",
+    "@types/node": "^22.15.17",
+    "@typescript-eslint/parser": "^8.32.0",
+    "eslint": "^9.26.0",
+    "globals": "^16.1.0",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.31.1"
+    "typescript-eslint": "^8.32.0"
   },
   "engines": {
     "node": ">=18.0.0"
