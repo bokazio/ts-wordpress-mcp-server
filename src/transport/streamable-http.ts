@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { InMemoryEventStore } from '@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js';
 import { MCP_PROTOCOL_VERSION_CURRENT } from '../config/index.js';
 import { createMcpServer } from '../server/mcp-server.js';
+import { OAUTH_ENABLED, hasValidOAuthConfig, MCP_BASE_URL } from '../config/oauth-config.js';
 
 // Store for all active Streamable HTTP transports
 export const streamableTransports: Record<string, StreamableHTTPServerTransport> = {};
@@ -68,7 +69,47 @@ export async function handleStreamableHttpRequest(req: Request, res: Response): 
     console.log(`[${requestId}] Received ${req.method} request to /mcp`);
 
     try {
-        // MCP endpoint does not require bearer token authentication
+        // Check for OAuth authentication if enabled
+        if (OAUTH_ENABLED && hasValidOAuthConfig()) {
+            // Only apply OAuth check for initialization requests
+            if (req.method === 'POST' && !req.headers['mcp-session-id']) {
+                // Check if this looks like an initialization request
+                let isInitReq = false;
+                try {
+                    isInitReq = isInitializeRequest(req.body);
+                } catch (error) {
+                    // Ignore validation errors here
+                }
+
+                const isManuallyValidated =
+                    req.body?.jsonrpc === '2.0' &&
+                    req.body?.method === 'initialize' &&
+                    req.body?.params?.client_name &&
+                    req.body?.params?.client_version &&
+                    req.body?.id !== undefined;
+
+                // If this is an initialize request and no authorization header is present
+                if ((isInitReq || isManuallyValidated) && !req.headers.authorization) {
+                    console.log(`[${requestId}] OAuth required for initialization request but no authorization provided`);
+                    
+                    // Return a 401 response with OAuth information
+                    res.status(401).json({
+                        jsonrpc: '2.0',
+                        error: {
+                            code: -32001,
+                            message: 'Authentication required',
+                            data: {
+                                authUrl: `${MCP_BASE_URL}/auth`,
+                                type: 'oauth2'
+                            }
+                        },
+                        id: req.body?.id ?? null
+                    });
+                    return;
+                }
+            }
+        }
+
         // Get session ID from header
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
 

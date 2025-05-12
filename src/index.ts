@@ -9,6 +9,7 @@ import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import {
     useStdio,
     PORT,
@@ -17,6 +18,13 @@ import {
     RATE_LIMIT,
     MCP_AUTH_TOKEN
 } from './config/index.js';
+import { 
+    OAUTH_ENABLED, 
+    OAUTH_ISSUER_URL, 
+    MCP_BASE_URL,
+    MCP_SERVICE_DOCUMENTATION_URL,
+    hasValidOAuthConfig
+} from './config/oauth-config.js';
 import { createMcpServer } from './server/mcp-server.js';
 import {
     handleStreamableHttpRequest,
@@ -27,6 +35,7 @@ import {
     handleSseMessage,
     closeAllSseTransports
 } from './transport/sse.js';
+import { createOAuthProvider } from './auth/oauth-provider.js';
 
 // --- Server Start ---
 
@@ -109,6 +118,40 @@ if (useStdio) {
         console.log(`${new Date().toISOString()} | ${req.method} ${req.url} | IP: ${req.ip}`);
         next();
     });
+
+    //=============================================================================
+    // OAUTH ROUTER SETUP (FOR STREAMABLE HTTP TRANSPORT)
+    //=============================================================================
+    
+    if (OAUTH_ENABLED && hasValidOAuthConfig()) {
+        console.log('Setting up OAuth authentication routes...');
+        
+        try {
+            // Create the OAuth provider
+            const proxyProvider = createOAuthProvider();
+            
+            // Create OAuth router
+            const authRouter = mcpAuthRouter({
+                provider: proxyProvider,
+                issuerUrl: new URL(OAUTH_ISSUER_URL),
+                baseUrl: new URL(MCP_BASE_URL),
+                serviceDocumentationUrl: new URL(MCP_SERVICE_DOCUMENTATION_URL),
+            });
+            
+            // Mount the OAuth router
+            app.use(authRouter);
+            
+            console.log('OAuth authentication routes configured successfully');
+        } catch (error) {
+            console.error('Failed to configure OAuth authentication:', error);
+            console.warn('The server will continue without OAuth authentication');
+        }
+    } else if (OAUTH_ENABLED) {
+        console.warn('OAuth is enabled but configuration is incomplete. Check your environment variables.');
+        console.warn('The server will continue without OAuth authentication');
+    } else {
+        console.log('OAuth authentication is disabled');
+    }
 
     //=============================================================================
     // MODERN STREAMABLE HTTP TRANSPORT (PROTOCOL VERSION 2025-03-26)
@@ -212,10 +255,20 @@ SUPPORTED TRANSPORT OPTIONS:
     
     // Log MCP server authentication status
     if (MCP_AUTH_TOKEN) {
-        console.log('Bearer Token Authentication is enabled for SSE endpoint (/sse)');
-        console.log('MCP endpoint (/mcp) does not require authentication');
+        console.log('Bearer Token Authentication is ENABLED for SSE endpoint (/sse)');
     } else {
-        console.warn('Bearer Token Authentication is not configured for SSE endpoint.');
+        console.warn('Bearer Token Authentication is DISABLED for SSE endpoint.');
         console.warn('Set MCP_AUTH_TOKEN environment variable for secure SSE transport.');
+    }
+    
+    // Log OAuth status
+    if (OAUTH_ENABLED && hasValidOAuthConfig()) {
+        console.log('OAuth Authentication is ENABLED for Streamable HTTP transport (/mcp)');
+        console.log(`OAuth Authorization URL: ${OAUTH_ISSUER_URL}`);
+    } else if (OAUTH_ENABLED) {
+        console.warn('OAuth is enabled but configuration is incomplete. Check your .env file.');
+    } else {
+        console.log('OAuth Authentication is DISABLED for Streamable HTTP transport');
+        console.log('To enable OAuth, set OAUTH_ENABLED=true in your .env file and configure the OAuth parameters');
     }
 }

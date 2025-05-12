@@ -13,7 +13,7 @@ The server now supports multiple transport methods including local stdio-based i
 
 ## Features
 
-- **Secure Authentication**: OAuth2 integration for modern authentication flows (WIP/not sucessfully tested see branch `oauth2`)
+- **Secure Authentication**: OAuth2 integration for modern authentication flows (WIP/not sucessfully tested)
 - **Multiple Transport Methods**:
   - Streamable HTTP (current MCP protocol version)
   - Server-Sent Events (legacy support)
@@ -37,6 +37,7 @@ The server now supports multiple transport methods including local stdio-based i
       - [Server Settings](#server-settings)
       - [Transport Settings](#transport-settings)
       - [Legacy Authentication (SSE Transport Only)](#legacy-authentication-sse-transport-only)
+    - [OAuth Setup](#oauth-setup)
   - [Usage](#usage)
     - [Starting the Server](#starting-the-server)
     - [Transport Options](#transport-options)
@@ -124,6 +125,32 @@ RATE_LIMIT=60           # Requests per minute per IP
 ```bash
 # Bearer token for SSE transport authentication
 MCP_AUTH_TOKEN=your_secure_token_here
+```
+
+### OAuth Setup
+
+**Note: OAuth Integration is currently a work in progress. This feature has not been fully tested as clients are not currently using it.**
+
+The server includes preliminary support for OAuth2 authentication for the Streamable HTTP transport. To enable it:
+
+```bash
+# Enable OAuth Authentication
+OAUTH_ENABLED=true
+
+# OAuth Provider Example Endpoints 
+OAUTH_AUTHORIZATION_URL=https://authorization-server.com/authorize
+OAUTH_TOKEN_URL=https://authorization-server.com/token
+OAUTH_REVOCATION_URL=https://authorization-server.com/revoke
+OAUTH_CLIENT_VERIFICATION_URL=https://authorization-server.com/introspect
+
+# OAuth Client Configuration
+OAUTH_CLIENT_ID=your_client_id
+OAUTH_CLIENT_SECRET=your_client_secret
+OAUTH_REDIRECT_URI=http://<your-ip or dns-name>:3000/callback
+
+# Other OAuth Settings
+OAUTH_ISSUER_URL=https://authorization-server.com
+MCP_SERVICE_DOCUMENTATION_URL=https://docs.example.com/
 ```
 
 ## Usage
